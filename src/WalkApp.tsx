@@ -24,7 +24,7 @@ export default function WalkApp() {
 
   const fix = fixFromState(geo);
   const here: Place | null = useMemo(
-    () => (fix ? placeAt(fix.lat, fix.lng) : null),
+    () => (fix ? placeAt(fix.lat, fix.lng, fix.accuracy) : null),
     [fix],
   );
 
@@ -46,7 +46,7 @@ export default function WalkApp() {
             )}
           </>
         ) : (
-          <p className="text-[11px] text-[#6a6a66] sm:text-[10px]">{geo.message}</p>
+          <p className="text-[11px] text-[#6a6a66] sm:text-[10px]">Location required.</p>
         )}
       </div>
     </PaperStudio>

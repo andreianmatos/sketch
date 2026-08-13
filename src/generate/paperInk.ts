@@ -105,7 +105,6 @@ export function sleep(ms: number): Promise<void> {
 
 export type Timing = {
   speed: number;
-  drift: number;
   fade: number;
   rewind?: boolean;
   stop?: () => boolean;
@@ -116,24 +115,20 @@ export type Timing = {
 export function stampRate(speed: number): number {
   const t = Math.max(0, Math.min(1, speed));
   if (t >= 0.96) return Infinity;
-  const perFrame = Math.max(1, Math.pow(t, 1.65) * 36);
-  const delay = 20 + Math.pow(1 - t, 1.15) * 42;
+  const perFrame = Math.max(1, Math.pow(t, 1.5) * 52);
+  const delay = 16 + Math.pow(1 - t, 1.1) * 34;
   return (perFrame / Math.max(delay, 16)) * 1000;
 }
 
 function stampsThisFrame(
   speed: number,
   remaining: number,
-  rewind = false,
 ): { n: number; delay: number } {
   const t = Math.max(0, Math.min(1, speed));
-  if (rewind) {
-    return { n: 1, delay: 56 };
-  }
   if (t >= 0.96) return { n: remaining, delay: 0 };
   if (t <= 0.02) return { n: 1, delay: 72 };
-  const n = Math.max(1, Math.round(Math.pow(t, 1.65) * 36));
-  const delay = 20 + Math.pow(1 - t, 1.15) * 42;
+  const n = Math.max(1, Math.round(Math.pow(t, 1.5) * 52));
+  const delay = 16 + Math.pow(1 - t, 1.1) * 34;
   return { n: Math.min(remaining, n), delay };
 }
 
@@ -152,12 +147,11 @@ function animateStamps(
         return;
       }
       const t = Math.max(0, Math.min(1, timing.speed));
-      const drift = Math.max(0, Math.min(1, timing.drift));
       if (i >= count) {
         resolve();
         return;
       }
-      const { n, delay } = stampsThisFrame(t, count - i, Boolean(timing.rewind));
+      const { n, delay } = stampsThisFrame(t, count - i);
       const end = i + n;
       for (; i < end; i++) stamp(i);
       timing.afterStamp?.();
@@ -165,11 +159,7 @@ function animateStamps(
         resolve();
         return;
       }
-      let wait = delay;
-      if (!timing.rewind && drift > 0.04 && hash01(i * 0.37 + count) < 0.08 + drift * 0.22) {
-        wait += (80 + hash01(i * 1.1) * 420) * (0.45 + drift);
-      }
-      if (wait > 8) window.setTimeout(() => requestAnimationFrame(tick), wait);
+      if (delay > 8) window.setTimeout(() => requestAnimationFrame(tick), delay);
       else requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -351,45 +341,48 @@ function expWait(mean: number, lo: number, hi: number): number {
 }
 
 /**
- * Wait until the next rewind. Over the Blank threshold → lift soon.
- * Under it → leave the page alone so drawing can catch up.
+ * Wait until the next rewind. Over target → lift soon. Under it → still
+ * tick, but fewer parallel slots will actually pick work up.
  */
 export function nextUndrawWait(blank: number, load: number, want: number): number {
   if (blank <= 0.001) return 400;
   const err = load - want;
-  let mean = 4000;
-  if (err > 0.2) mean = 900;
-  else if (err > 0.08) mean = 1800;
-  else if (err > 0.02) mean = 3200;
-  else if (err > -0.06) mean = 7000;
-  else if (err > -0.16) mean = 12000;
-  else mean = 20000;
-  return expWait(mean, 400, 28000);
+  let mean = 420;
+  if (err > 0.12) mean = 160;
+  else if (err > 0.02) mean = 280;
+  else if (err > -0.1) mean = 520;
+  else mean = 1100;
+  return expWait(mean, 80, 4000);
 }
 
-/** Pause drawing when the page is denser than the Blank slider. */
+/** Hands keep drawing. Only ease off when the page is well over the target. */
 export function nextDrawWait(load: number, want: number): number {
   const err = load - want;
-  let mean = 700;
-  if (err > 0.22) mean = 5000;
-  else if (err > 0.1) mean = 2800;
-  else if (err > 0.03) mean = 1600;
-  else if (err > -0.05) mean = 900;
-  else mean = 480;
-  return expWait(mean, 220, 12000);
+  let mean = 240;
+  if (err > 0.28) mean = 1100;
+  else if (err > 0.12) mean = 480;
+  else if (err > 0.02) mean = 280;
+  else mean = 180;
+  return expWait(mean, 70, 3200);
 }
 
-export function undrawBurst(load: number, want: number): number {
+export const MAX_UNDRAW = 3;
+
+/** How many drawings may rewind at once, alongside the hands. */
+export function undrawSlots(blank: number, load: number, want: number): number {
+  if (blank <= 0.001) return 0;
   const err = load - want;
-  if (err > 0.32 && Math.random() < 0.2) return 2;
-  return 1;
+  if (err > 0.2) return 3;
+  if (err > 0.05) return 2;
+  if (err > -0.12) return 1;
+  return Math.random() < 0.3 ? 1 : 0;
 }
 
 export function undrawMinAge(load: number, want: number): number {
   const err = load - want;
-  if (err > 0.12) return 1800;
-  if (err > 0.02) return 3200;
-  return 5200;
+  if (err > 0.12) return 280;
+  if (err > 0.02) return 480;
+  return 800;
 }
 
 function pickAgedDrawing(archive: RecordedDrawing[], minAgeMs: number): number {
@@ -407,16 +400,16 @@ async function fadeLayerRest(
   timing: Timing,
 ): Promise<void> {
   const { width: w, height: h } = ctx.canvas;
-  for (let k = 0; k < 28; k++) {
+  for (let k = 0; k < 5; k++) {
     if (timing.stop?.()) return;
     ctx.save();
     ctx.globalCompositeOperation = "destination-out";
-    ctx.globalAlpha = 0.045;
+    ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
     timing.afterStamp?.();
-    await sleep(70);
+    await sleep(16);
   }
 }
 
@@ -440,7 +433,7 @@ export async function undrawDrawing(
   archive: RecordedDrawing[],
   timing: Timing,
   onLift: (drawing: RecordedDrawing) => void,
-  onDone: () => void,
+  onDone: (drawing: RecordedDrawing) => void,
   minAgeMs = 2200,
 ): Promise<boolean> {
   const idx = pickAgedDrawing(archive, minAgeMs);
@@ -454,12 +447,12 @@ export async function undrawDrawing(
       break;
     }
     await undrawStroke(drawing.strokes[s], timing);
-    if (s > 0 && !timing.stop?.()) await sleep(160 + Math.random() * 280);
+    if (s > 0 && !timing.stop?.()) await sleep(90 + Math.random() * 200);
   }
   if (aborted) {
     archive.push(drawing);
   }
-  onDone();
+  onDone(drawing);
   return !aborted;
 }
 

@@ -166,7 +166,7 @@ The public site is **GitHub Pages**. The picker runs in the browser; there is no
 2. Push `main`. The workflow publishes `https://andreianmatos.github.io/sketch/`.
 3. Walk is `https://andreianmatos.github.io/sketch/walk.html`.
 
-Walk inks only inside mapped spaces (`src/geo/places.ts`) — small pins, not streets, unless you specify a street or a whole neighborhood. Vila Chã de Sá is a small pin; Laranjeiras is the Lisbon neighborhood (Estrada da Luz, Alto dos Moinhos, Estrada de Benfica). Add more places there; later a place can set `ink` for drawings that belong only to that spot.
+Walk inks only inside mapped spaces (`src/geo/places.ts`) — small pins, not streets, unless you specify a street or a whole neighborhood. Vila Chã de Sá is Estrada dos Lagares (including nº 104); Laranjeiras is the Lisbon neighborhood (Estrada da Luz, Alto dos Moinhos, Estrada de Benfica). Add more places there; later a place can set `ink` for drawings that belong only to that spot.
 
 Locally: `npm run knowledge` then `npm run dev`. After new scans: `make paper` then push.
 

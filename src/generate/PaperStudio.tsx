@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   MAX_HANDS,
+  MAX_UNDRAW,
   PAPER,
   drawUnit,
   freezeStroke,
@@ -15,9 +16,9 @@ import {
   scaleStroke,
   sleep,
   tickBreath,
-  undrawBurst,
   undrawDrawing,
   undrawMinAge,
+  undrawSlots,
   type HandState,
   type LayerBlit,
   type Passage,
@@ -48,8 +49,7 @@ export default function PaperStudio({
   children,
 }: PaperStudioProps) {
   const [status, setStatus] = useState("");
-  const [speed, setSpeed] = useState(0.24);
-  const [drift, setDrift] = useState(0.14);
+  const [speed, setSpeed] = useState(0.38);
   const [novelty, setNovelty] = useState(0.1);
   const [mode, setMode] = useState<"vibe" | "icon" | "mix">("mix");
   const [icon, setIcon] = useState("flower");
@@ -68,7 +68,6 @@ export default function PaperStudio({
   const paramsRef = useRef({
     novelty,
     speed,
-    drift,
     mode,
     icon,
     hands,
@@ -82,7 +81,7 @@ export default function PaperStudio({
   const archiveRef = useRef<RecordedDrawing[]>([]);
   const liveCanvasesRef = useRef<HTMLCanvasElement[]>([]);
   const liveStrokesRef = useRef<RecordedStroke[]>([]);
-  const rewindingRef = useRef<RecordedDrawing | null>(null);
+  const rewindingRef = useRef<RecordedDrawing[]>([]);
   const paperRef = useRef<HTMLCanvasElement | null>(null);
   const onDrawingChangeRef = useRef(onDrawingChange);
   onDrawingChangeRef.current = onDrawingChange;
@@ -98,7 +97,7 @@ export default function PaperStudio({
       }
     };
     for (const d of archiveRef.current) addDrawing(d);
-    if (rewindingRef.current) addDrawing(rewindingRef.current);
+    for (const d of rewindingRef.current) addDrawing(d);
     for (const s of liveStrokesRef.current) {
       layers.push({ canvas: s.layer, x: s.ox, y: s.oy });
     }
@@ -116,7 +115,7 @@ export default function PaperStudio({
       strokes: d.strokes.map((s) => scaleStroke(s, sx, sy)),
     });
     archiveRef.current = archiveRef.current.map(mapDrawing);
-    if (rewindingRef.current) rewindingRef.current = mapDrawing(rewindingRef.current);
+    rewindingRef.current = rewindingRef.current.map(mapDrawing);
     liveStrokesRef.current = liveStrokesRef.current.map((s) => scaleStroke(s, sx, sy));
     liveCanvasesRef.current = liveCanvasesRef.current
       .filter((c) => c.width === ow && c.height === oh)
@@ -151,7 +150,6 @@ export default function PaperStudio({
     paramsRef.current = {
       novelty,
       speed,
-      drift,
       mode: ink?.mode ?? mode,
       icon: ink?.icon ?? icon,
       hands,
@@ -159,7 +157,7 @@ export default function PaperStudio({
       fade,
       fill,
     };
-  }, [novelty, speed, drift, mode, icon, hands, wander, fade, fill, ink]);
+  }, [novelty, speed, mode, icon, hands, wander, fade, fill, ink]);
 
   const randomSpot = useCallback(() => {
     const { w, h } = sizeRef.current;
@@ -194,7 +192,7 @@ export default function PaperStudio({
     archiveRef.current = [];
     liveCanvasesRef.current = [];
     liveStrokesRef.current = [];
-    rewindingRef.current = null;
+    rewindingRef.current = [];
     nRef.current = 0;
     setPassageCount(0);
     fillPaper();
@@ -247,9 +245,6 @@ export default function PaperStudio({
         get speed() {
           return paramsRef.current.speed;
         },
-        get drift() {
-          return paramsRef.current.drift;
-        },
         get fade() {
           return paramsRef.current.fade;
         },
@@ -284,7 +279,7 @@ export default function PaperStudio({
             liveStrokesRef.current.push(stroke);
             present();
           }
-          await sleep(220 + Math.random() * 480);
+          await sleep(90 + Math.random() * 200);
         }
         if (strokes.length) {
           archiveRef.current.push({ strokes, at: Date.now() });
@@ -313,21 +308,21 @@ export default function PaperStudio({
     archiveRef.current = [];
     liveCanvasesRef.current = [];
     liveStrokesRef.current = [];
-    rewindingRef.current = null;
+    rewindingRef.current = [];
     setPassageCount(0);
     fillPaper();
 
     const breath = makeInkBreath(paramsRef.current.fade);
     const extraInk = () => [
       ...liveStrokesRef.current,
-      ...(rewindingRef.current?.strokes ?? []),
+      ...rewindingRef.current.flatMap((d) => d.strokes),
     ];
     const measure = () =>
       pageLoad(archiveRef.current, extraInk(), liveCanvasesRef.current.length);
 
     const runHand = async (id: number) => {
       const hand: HandState = { cursor: randomSpot(), source: null };
-      await sleep(id * 280);
+      await sleep(id * 180);
       if (!alive()) return;
       let pending: Promise<Passage> | null = null;
       while (alive()) {
@@ -342,10 +337,6 @@ export default function PaperStudio({
         setTrade({ ink: load, want });
         await sleep(nextDrawWait(load, want));
         if (!alive()) break;
-        const nowLoad = measure();
-        const nowWant = tickBreath(breath, paramsRef.current.fade);
-        if (nowLoad > nowWant + 0.1) continue;
-        if (nowLoad > nowWant + 0.02 && Math.random() < 0.55) continue;
         try {
           const { wander: wdr } = paramsRef.current;
           if (Math.random() < wdr) {
@@ -371,13 +362,10 @@ export default function PaperStudio({
       }
     };
 
-    const runUndraw = async () => {
+    const runUndraw = async (id: number) => {
       const timing: Timing = {
         get speed() {
           return paramsRef.current.speed;
-        },
-        get drift() {
-          return paramsRef.current.drift;
         },
         get fade() {
           return paramsRef.current.fade;
@@ -386,7 +374,7 @@ export default function PaperStudio({
         stop: () => !alive(),
         afterStamp: present,
       };
-      await sleep(1200 + Math.random() * 1800);
+      await sleep(280 + id * 220 + Math.random() * 400);
       while (alive()) {
         const fade = paramsRef.current.fade;
         if (fade <= 0.001) {
@@ -396,42 +384,42 @@ export default function PaperStudio({
         const load = measure();
         const want = tickBreath(breath, fade);
         setTrade({ ink: load, want });
+        const slots = undrawSlots(fade, load, want);
+        if (rewindingRef.current.length >= slots) {
+          await sleep(180);
+          continue;
+        }
         await sleep(nextUndrawWait(fade, load, want));
         if (!alive()) break;
         if (paramsRef.current.fade <= 0.001) continue;
         const nowWant = tickBreath(breath, paramsRef.current.fade);
         const nowLoad = measure();
-        if (nowLoad < nowWant - 0.12) continue;
-        if (nowLoad < nowWant - 0.04 && Math.random() < 0.55) continue;
-        const burst = undrawBurst(nowLoad, nowWant);
-        for (let b = 0; b < burst; b++) {
-          if (!alive() || paramsRef.current.fade <= 0.001) break;
-          const loadNow = measure();
-          const lifted = await undrawDrawing(
-            archiveRef.current,
-            timing,
-            (d) => {
-              rewindingRef.current = d;
-              present();
-            },
-            () => {
-              rewindingRef.current = null;
-              present();
-            },
-            undrawMinAge(loadNow, nowWant),
-          );
-          setTrade({
-            ink: measure(),
-            want: breath.want,
-          });
-          if (!lifted) break;
-          if (b + 1 < burst) await sleep(400 + Math.random() * 700);
+        if (rewindingRef.current.length >= undrawSlots(paramsRef.current.fade, nowLoad, nowWant)) {
+          continue;
         }
+        const lifted = await undrawDrawing(
+          archiveRef.current,
+          timing,
+          (d) => {
+            rewindingRef.current.push(d);
+            present();
+          },
+          (d) => {
+            rewindingRef.current = rewindingRef.current.filter((x) => x !== d);
+            present();
+          },
+          undrawMinAge(nowLoad, nowWant),
+        );
+        setTrade({
+          ink: measure(),
+          want: breath.want,
+        });
+        if (!lifted) await sleep(220);
       }
     };
 
     for (let i = 0; i < MAX_HANDS; i++) void runHand(i);
-    void runUndraw();
+    for (let i = 0; i < MAX_UNDRAW; i++) void runUndraw(i);
 
     return () => {
       genRef.current += 1;
@@ -459,7 +447,7 @@ export default function PaperStudio({
     archiveRef.current = [];
     liveCanvasesRef.current = [];
     liveStrokesRef.current = [];
-    rewindingRef.current = null;
+    rewindingRef.current = [];
     fillPaper();
     nRef.current = 0;
     setPassageCount(0);
@@ -578,18 +566,6 @@ export default function PaperStudio({
                   <span>fast</span>
                 </span>
               </label>
-              <label className="block" title="Uneven stops and rushes">
-                Drift {drift.toFixed(2)}
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={drift}
-                  onChange={(e) => setDrift(Number(e.target.value))}
-                  className="mt-0.5 w-full"
-                />
-              </label>
               <label className="block">
                 Invent {novelty.toFixed(2)}
                 <input
@@ -616,7 +592,7 @@ export default function PaperStudio({
               </label>
               <label
                 className="block"
-                title="How much empty paper to keep. Below this density the hands draw; above it they wait and marks lift."
+                title="How empty vs full. Hands keep drawing; extra lifts join in when the page is over this."
               >
                 Blank {fade.toFixed(2)}
                 <input

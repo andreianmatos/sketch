@@ -30,9 +30,10 @@ export const PLACES: Place[] = [
   {
     id: "vila-cha-de-sa",
     name: "Vila Chã de Sá",
-    lat: 40.611369,
-    lng: -7.946984,
-    radiusM: PLACE_RADIUS_M,
+    // Estrada dos Lagares (nº 104) — the street, not a 45 m pin.
+    lat: 40.60852,
+    lng: -7.95162,
+    radiusM: 1000,
     draw: true,
   },
   {
@@ -48,8 +49,8 @@ export const PLACES: Place[] = [
 
 /** Grid / mock origin — the first mapped space. */
 export const MAP_ORIGIN = {
-  lat: 40.611369,
-  lng: -7.946984,
+  lat: 40.60852,
+  lng: -7.95162,
 } as const;
 
 const EARTH_M = 6_371_000;
@@ -69,11 +70,16 @@ export function distanceM(
   return 2 * EARTH_M * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-export function placeAt(lat: number, lng: number): Place | null {
+export function placeAt(
+  lat: number,
+  lng: number,
+  accuracyM: number | null = null,
+): Place | null {
+  const pad = Math.min(80, Math.max(0, accuracyM ?? 0));
   let best: { place: Place; d: number } | null = null;
   for (const place of PLACES) {
     const d = distanceM(lat, lng, place.lat, place.lng);
-    if (d <= place.radiusM && (!best || d < best.d)) {
+    if (d <= place.radiusM + pad && (!best || d < best.d)) {
       best = { place, d };
     }
   }
