@@ -1,14 +1,4 @@
----
-title: Bussaco Paper
-emoji: ✏️
-colorFrom: yellow
-colorTo: gray
-sdk: docker
-app_port: 7860
-pinned: false
----
-
-# Bussaco Latent Archive
+# Latent Archive
 
 A drawing is not a picture. It is a sequence of marks in time — pressure, lift, return. This project studies a personal archive of scans, then draws *from that knowledge* onto a paper canvas: same hand, new page.
 
@@ -16,8 +6,7 @@ It does not generate pixels. It generates **strokes**, inks them with **pens clu
 
 ```bash
 make paper          # study the archive (pens + scribbles + symbols)
-make run            # API on :8787  — leave this running
-npm run dev         # UI  on :5173  — second terminal
+npm run dev         # UI on :5173 — picker runs in the tab
 ```
 
 Open [http://localhost:5173/](http://localhost:5173/). Ink: **vibe** (scratches) / **icon** (labeled motifs) / **mix**.
@@ -108,7 +97,7 @@ The architecture is an **autoencoder**. It is not an *image* autoencoder. A conv
 - **icon** — place a labeled symbol, lightly jittered; at higher novelty, graft stem/bloom across examples
 - **mix** — often a symbol, otherwise a scratch
 
-Placement is page-relative: an anchor, a scale, a small rotation. Pens and palette still apply. The API (`POST /api/stroke`) returns JSON units — polylines, widths, color, look — not a PNG. The browser is the hand.
+Placement is page-relative: an anchor, a scale, a small rotation. Pens and palette still apply. The browser picker (`composePassage.ts`) returns JSON units — polylines, widths, color, look — not a PNG. The canvas is the hand.
 
 ---
 
@@ -139,19 +128,15 @@ A stronger next step, if you want more invention of motifs, is still stroke-shap
 
 ## Run
 
-Two processes. Do not chain them with `&&` — `make run` does not exit.
-
 ```bash
-make run        # terminal 1 — API :8787
-npm run dev     # terminal 2 — UI  :5173
+npm run dev     # publishes knowledge + UI on :5173
 ```
-
-If port 8787 is busy, `make run` frees it and binds again.
 
 Rebuild knowledge after adding scans:
 
 ```bash
 make paper      # pens + scribbles + symbols
+npm run knowledge
 ```
 
 Add a motif:
@@ -159,36 +144,31 @@ Add a motif:
 ```bash
 # drawings/<label>/*.jpg
 make symbols
-# restart make run
 ```
 
 | | |
 |---|---|
 | UI | React, TypeScript, Vite, Canvas 2D |
-| API | FastAPI (`generate/server.py`) |
+| Picker | TypeScript in the browser (`src/generate/composePassage.ts`) |
+| Study (local) | `make paper` — optional FastAPI (`generate/server.py`) |
 | Vision | OpenCV |
 | Pens / dictionary | NumPy k-means |
-| Stroke VAE | PyTorch SketchRNN-style |
+| Stroke VAE | PyTorch SketchRNN-style (local Invent, not on Pages yet) |
 | Archive | `drawings/` files = vibe, subfolders = symbols |
 
 ---
 
-## Deploy (Hugging Face Space)
+## Deploy
 
-The `Dockerfile` builds the UI and serves it with the API on port **7860**.
+The public site is **GitHub Pages**. The picker runs in the browser; there is no Python server.
 
-```bash
-hf auth login
-hf repo create bussaco-paper --repo-type space --space-sdk docker
-git init
-git add -A
-git commit -m "Paper: pens, scribbles, symbols"
-git branch -M main
-git remote add space https://huggingface.co/spaces/<your-hf-username>/bussaco-paper
-git push space main
-```
+1. In the GitHub repo: **Settings → Pages → Source: GitHub Actions**.
+2. Push `main`. The workflow publishes `https://andreianmatos.github.io/sketch/`.
+3. Walk is `https://andreianmatos.github.io/sketch/walk.html`.
 
-First build on the Space takes several minutes (CPU PyTorch). Open the Space URL when the container is running.
+Locally: `npm run knowledge` then `npm run dev`. After new scans: `make paper` then push.
+
+The **Invent** slider still varies replay and grafts flowers. The PyTorch VAE is not in the tab yet — that stays a local `make paper` / optional `make run` tool.
 
 ```
 drawings/                      vibe pages (files)
@@ -199,7 +179,8 @@ generate/
   build_pens.py
   build_style_dictionary.py
   stroke_model/train.py        VAE on (dx, dy, pen)
-  compose_strokes.py           next passage
-  server.py
-src/generate/                  paper, layers, draw / undraw
+  compose_strokes.py           next passage (local Python)
+  publish_knowledge.py         shards for the browser picker
+  server.py                    optional local API
+src/generate/                  paper, layers, picker, draw / undraw
 ```

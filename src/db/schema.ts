@@ -17,12 +17,12 @@ export type GridCell = {
   lastVisitAt: number;
 };
 
-class BussacoDB extends Dexie {
+class PaperDB extends Dexie {
   positions!: EntityTable<GpsPosition, "id">;
   cells!: EntityTable<GridCell, "key">;
 
   constructor() {
-    super("bussaco-archive");
+    super("paper-archive");
     this.version(1).stores({
       positions: "++id, ts",
       cells: "key, ix, iy, visitCount, lastVisitAt",
@@ -30,7 +30,7 @@ class BussacoDB extends Dexie {
   }
 }
 
-export const db = new BussacoDB();
+export const db = new PaperDB();
 
 export async function recordPosition(
   lat: number,

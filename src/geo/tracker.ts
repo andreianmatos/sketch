@@ -4,7 +4,7 @@ import {
   recordPosition,
   type GridCell,
 } from "../db/schema";
-import { BUSSACO_ORIGIN, latLngToCell, metersToLatLng } from "./spatialHash";
+import { MAP_ORIGIN, latLngToCell, metersToLatLng } from "./spatialHash";
 
 export type TrackerStatus =
   | "idle"
@@ -121,8 +121,8 @@ export class GeoTracker {
 
     this.emit({
       status: "mock",
-      lat: BUSSACO_ORIGIN.lat,
-      lng: BUSSACO_ORIGIN.lng,
+      lat: MAP_ORIGIN.lat,
+      lng: MAP_ORIGIN.lng,
       accuracy: 5,
       cellKey: this.previousKey,
       message: "Mock walk running…",

@@ -1,5 +1,5 @@
 ---
-title: Bussaco Paper
+title: Paper
 emoji: ✏️
 colorFrom: yellow
 colorTo: gray
@@ -8,8 +8,10 @@ app_port: 7860
 pinned: false
 ---
 
-# Bussaco Paper
+# Paper
 
 Generative paper from personal drawings (pens + scribbles + symbols).
 
-Open the Space URL after build finishes. First load can be slow while the container wakes.
+The live site is GitHub Pages: https://andreianmatos.github.io/sketch/
+
+This Hugging Face Docker Space is optional and currently needs a paid plan.

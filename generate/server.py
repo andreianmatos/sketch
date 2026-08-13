@@ -29,7 +29,7 @@ OUT_DIR = ROOT / "data" / "generate" / "outputs"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 DIST_DIR = ROOT / "dist"
 
-app = FastAPI(title="Bussaco Paper", version="0.8.0")
+app = FastAPI(title="Paper", version="0.8.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

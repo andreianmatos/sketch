@@ -1,5 +1,5 @@
-/** Mata do Bussaco approximate center (WGS84). */
-export const BUSSACO_ORIGIN = {
+/** Default map origin (WGS84). */
+export const MAP_ORIGIN = {
   lat: 40.376,
   lng: -8.435,
 } as const;
@@ -27,11 +27,11 @@ export function parseCellKey(key: string): CellIndex {
   return { ix, iy };
 }
 
-/** Local east/north meters relative to Bussaco origin. */
+/** Local east/north meters relative to the map origin. */
 export function latLngToMeters(
   lat: number,
   lng: number,
-  origin = BUSSACO_ORIGIN,
+  origin = MAP_ORIGIN,
 ): { east: number; north: number } {
   const east = (lng - origin.lng) * metersPerDegLng(origin.lat);
   const north = (lat - origin.lat) * METERS_PER_DEG_LAT;
@@ -41,7 +41,7 @@ export function latLngToMeters(
 export function metersToLatLng(
   east: number,
   north: number,
-  origin = BUSSACO_ORIGIN,
+  origin = MAP_ORIGIN,
 ): { lat: number; lng: number } {
   const lat = origin.lat + north / METERS_PER_DEG_LAT;
   const lng = origin.lng + east / metersPerDegLng(origin.lat);

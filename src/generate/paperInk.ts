@@ -127,8 +127,9 @@ function stampsThisFrame(
 ): { n: number; delay: number } {
   const t = Math.max(0, Math.min(1, speed));
   if (rewind) {
-    const n = Math.max(1, Math.round(1 + t * 5));
-    const delay = 10 + (1 - t) * 32;
+    // Always retrace the path. Never dump the stroke in one frame.
+    const n = remaining > 420 ? 3 : remaining > 180 ? 2 : 1;
+    const delay = 24 + (1 - t) * 22;
     return { n: Math.min(remaining, n), delay };
   }
   if (t >= 0.96) return { n: remaining, delay: 0 };
@@ -302,10 +303,10 @@ function clamp01(n: number, lo = 0, hi = 1): number {
 
 /** Slider trade-off: 0 keeps a full page, 1 prefers mostly empty. */
 export function preferLoad(fade: number): number {
-  return 0.9 - clamp01(fade) * 0.82;
+  return 0.72 - clamp01(fade) * 0.64;
 }
 
-/** How covered the page is right now (0 empty → 1 packed, ~8 drawings). */
+/** How covered the page is right now (0 empty → 1 packed, ~5 drawings). */
 export function pageLoad(
   archive: RecordedDrawing[],
   extra: RecordedStroke[] = [],
@@ -317,28 +318,28 @@ export function pageLoad(
   }
   for (const s of extra) marks += s.marks.length;
   if (extra.length) drawings += 1;
-  return Math.min(1.15, 0.72 * (drawings / 8) + 0.28 * (marks / 5000));
+  return Math.min(1.15, 0.74 * (drawings / 5.5) + 0.26 * (marks / 4200));
 }
 
 export function makeInkBreath(fade: number): InkBreath {
   const prefer = preferLoad(fade);
   return {
-    want: clamp01(prefer + (Math.random() - 0.5) * 0.12, 0.08, 0.92),
+    want: clamp01(prefer + (Math.random() - 0.5) * 0.1, 0.08, 0.78),
     nextMood: Date.now() + 14000 + Math.random() * 18000,
   };
 }
 
-/** Hold a fullness mood long enough to see: packed, sparse, or near the slider. */
+/** Hold a fullness mood long enough to see: a few drawings, or almost blank. */
 export function tickBreath(breath: InkBreath, fade: number, now = Date.now()): number {
   if (now < breath.nextMood) return breath.want;
   const prefer = preferLoad(fade);
   const t = clamp01(fade);
-  const emptyP = 0.1 + t * 0.22;
-  const packedP = 0.1 + (1 - t) * 0.22;
+  const emptyP = 0.14 + t * 0.22;
+  const packedP = 0.08 + (1 - t) * 0.16;
   const u = Math.random();
   if (u < emptyP) breath.want = 0.04 + Math.random() * 0.1;
-  else if (u < emptyP + packedP) breath.want = 0.78 + Math.random() * 0.18;
-  else breath.want = clamp01(prefer + (Math.random() - 0.5) * 0.16, 0.06, 0.94);
+  else if (u < emptyP + packedP) breath.want = 0.52 + Math.random() * 0.18;
+  else breath.want = clamp01(prefer + (Math.random() - 0.5) * 0.14, 0.06, 0.72);
   breath.nextMood = now + 18000 + Math.random() * 32000;
   return breath.want;
 }
@@ -356,38 +357,26 @@ export function nextUndrawWait(fade: number, load: number, want: number): number
   if (fade <= 0.001) return 400;
   const err = load - want;
   let mean = 1200;
-  if (err > 0.28) mean = 160;
-  else if (err > 0.12) mean = 420;
-  else if (err > 0.02) mean = 900;
-  else if (err > -0.1) mean = 2800;
-  else if (err > -0.24) mean = 8000;
-  else mean = 18000;
+  if (err > 0.22) mean = 140;
+  else if (err > 0.08) mean = 320;
+  else if (err > -0.02) mean = 700;
+  else if (err > -0.14) mean = 2200;
+  else if (err > -0.28) mean = 7000;
+  else mean = 16000;
   return expWait(mean, 90, 28000);
-}
-
-/** Hands pause before a new passage when the page is fuller than we want. */
-export function nextDrawWait(fade: number, load: number, want: number): number {
-  if (fade <= 0.001) return 0;
-  const err = load - want;
-  if (err <= 0.04) return 0;
-  if (err > 0.28) return expWait(2200, 800, 5000);
-  if (err > 0.14) return expWait(900, 280, 2200);
-  return expWait(280, 80, 700);
 }
 
 export function undrawBurst(load: number, want: number): number {
   const err = load - want;
-  if (err > 0.32) return 2 + Math.floor(Math.random() * 3);
-  if (err > 0.16) return 1 + Math.floor(Math.random() * 2);
-  if (err > 0.06 && Math.random() < 0.3) return 2;
+  if (err > 0.28 && Math.random() < 0.35) return 2;
   return 1;
 }
 
 export function undrawMinAge(load: number, want: number): number {
   const err = load - want;
-  if (err > 0.22) return 450;
-  if (err > 0.06) return 1100;
-  return 2400;
+  if (err > 0.16) return 400;
+  if (err > 0.02) return 900;
+  return 1800;
 }
 
 function pickAgedDrawing(archive: RecordedDrawing[], minAgeMs: number): number {
@@ -400,18 +389,38 @@ function pickAgedDrawing(archive: RecordedDrawing[], minAgeMs: number): number {
   return eligible[Math.floor(Math.random() * eligible.length)];
 }
 
+async function fadeLayerRest(
+  ctx: CanvasRenderingContext2D,
+  timing: Timing,
+): Promise<void> {
+  const { width: w, height: h } = ctx.canvas;
+  for (let k = 0; k < 10; k++) {
+    if (timing.stop?.()) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.globalAlpha = 0.16 + k * 0.04;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+    timing.afterStamp?.();
+    await sleep(36);
+  }
+}
+
 async function undrawStroke(
   stroke: RecordedStroke,
   timing: Timing,
 ): Promise<void> {
   const marks = stroke.marks;
-  if (marks.length < 2) return;
   const ctx = stroke.layer.getContext("2d");
   if (!ctx) return;
-  await animateStamps(marks.length, (i) => {
-    const m = marks[marks.length - 1 - i];
-    punchDab(ctx, m.x - stroke.ox, m.y - stroke.oy, m.size * 1.12);
-  }, timing);
+  if (marks.length >= 2) {
+    await animateStamps(marks.length, (i) => {
+      const m = marks[marks.length - 1 - i];
+      punchDab(ctx, m.x - stroke.ox, m.y - stroke.oy, m.size * 1.2);
+    }, timing);
+  }
+  if (!timing.stop?.()) await fadeLayerRest(ctx, timing);
 }
 
 export async function undrawDrawing(
@@ -428,6 +437,7 @@ export async function undrawDrawing(
   for (let s = drawing.strokes.length - 1; s >= 0; s--) {
     if (timing.stop?.()) break;
     await undrawStroke(drawing.strokes[s], timing);
+    if (s > 0 && !timing.stop?.()) await sleep(70 + Math.random() * 110);
   }
   onDone();
   return true;
@@ -517,13 +527,16 @@ function punchDab(
   y: number,
   size: number,
 ) {
-  const r = Math.max(3.2, size * 0.72);
+  const r = Math.max(3.6, size * 0.62);
   ctx.save();
   ctx.globalCompositeOperation = "destination-out";
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "#000";
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r * 1.15);
+  g.addColorStop(0, "rgba(0,0,0,1)");
+  g.addColorStop(0.55, "rgba(0,0,0,0.85)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.arc(x, y, r * 1.15, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }

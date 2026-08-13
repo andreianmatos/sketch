@@ -27,6 +27,9 @@ __pycache__/
 # original scans — too large for GitHub; keep them local
 drawings/
 
+# generated for the browser picker (npm run knowledge)
+public/knowledge/
+
 # salt pipeline artifacts
 data/generate/upload_marks/
 data/generate/outputs/

@@ -6,7 +6,6 @@ import {
   freezeStroke,
   makeInkBreath,
   makeLayer,
-  nextDrawWait,
   nextUndrawWait,
   pageLoad,
   paintPaper,
@@ -26,10 +25,8 @@ import {
   type RecordedStroke,
   type Timing,
 } from "./paperInk";
-
-const API =
-  import.meta.env.VITE_GENERATE_API ??
-  (import.meta.env.DEV ? "http://127.0.0.1:8787" : "");
+import { composePassage } from "./composePassage";
+import { knowledgeHealth } from "./knowledge";
 
 export type PaperStudioProps = {
   drawing: boolean;
@@ -47,14 +44,14 @@ export default function PaperStudio({
   children,
 }: PaperStudioProps) {
   const [status, setStatus] = useState("");
-  const [speed, setSpeed] = useState(0.66);
+  const [speed, setSpeed] = useState(0.38);
   const [drift, setDrift] = useState(0.06);
   const [novelty, setNovelty] = useState(0.1);
   const [mode, setMode] = useState<"vibe" | "icon" | "mix">("mix");
   const [icon, setIcon] = useState("flower");
   const [hands, setHands] = useState(1);
   const [wander, setWander] = useState(0.34);
-  const [fade, setFade] = useState(0.55);
+  const [fade, setFade] = useState(0.62);
   const [fill, setFill] = useState(0.28);
   const [readyIcons, setReadyIcons] = useState<string[]>([]);
   const [passageCount, setPassageCount] = useState(0);
@@ -203,17 +200,16 @@ export default function PaperStudio({
     fillPaper();
     void (async () => {
       try {
-        const res = await fetch(`${API}/api/health`);
-        const data = await res.json();
-        if (!data.ok) setStatus("Run: npm run prepare && npm run model");
+        const data = await knowledgeHealth();
+        if (!data.ok) setStatus("Run: npm run knowledge");
         else {
           setStatus("");
-          const icons = Array.isArray(data.icons) ? (data.icons as string[]) : [];
+          const icons = data.icons;
           setReadyIcons(icons);
           setIcon((prev) => (icons.includes(prev) ? prev : icons[0] || prev));
         }
       } catch {
-        setStatus("Model offline — npm run model");
+        setStatus("Knowledge missing — npm run knowledge");
       }
     })();
   }, [fillPaper]);
@@ -221,23 +217,18 @@ export default function PaperStudio({
   const fetchPassage = useCallback(async (seed: number, hand: HandState) => {
     const { novelty: n, mode: m, icon: ic, fill: fillAmt } = paramsRef.current;
     const { w, h } = sizeRef.current;
-    const q = new URLSearchParams({
-      novelty: String(n),
-      seed: String(seed),
-      width: String(w),
-      height: String(h),
+    return composePassage({
+      width: w,
+      height: h,
+      novelty: n,
+      seed,
       mode: m,
-      fill: String(fillAmt),
+      icon: ic,
+      fill: fillAmt,
+      source: hand.source,
+      cx: hand.cursor?.x,
+      cy: hand.cursor?.y,
     });
-    if (m !== "vibe" && ic) q.set("icon", ic);
-    if (hand.source) q.set("source", hand.source);
-    if (hand.cursor) {
-      q.set("cx", String(hand.cursor.x));
-      q.set("cy", String(hand.cursor.y));
-    }
-    const res = await fetch(`${API}/api/stroke?${q}`, { method: "POST" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return (await res.json()) as Passage;
   }, []);
 
   const paintPassage = useCallback(
@@ -347,19 +338,6 @@ export default function PaperStudio({
           continue;
         }
         try {
-          const fade = paramsRef.current.fade;
-          const load = measure();
-          const want = tickBreath(breath, fade);
-          const pause = nextDrawWait(fade, load, want);
-          if (pause > 0) {
-            setTrade({ ink: load, want });
-            await sleep(pause);
-            if (!alive()) continue;
-          }
-          if (measure() - breath.want > 0.14) {
-            pending = null;
-            continue;
-          }
           const { wander: wdr } = paramsRef.current;
           if (Math.random() < wdr) {
             hand.cursor = randomSpot();
@@ -375,11 +353,9 @@ export default function PaperStudio({
             hand,
             () => !alive() || id >= Math.round(paramsRef.current.hands),
           );
-          const after = measure();
-          setTrade({ ink: after, want: breath.want });
         } catch {
           if (id === 0 && alive()) {
-            setStatus("Failed — npm run prepare && npm run model");
+            setStatus("Failed to compose a passage");
             onDrawingChangeRef.current?.(false);
           }
           break;
@@ -631,7 +607,7 @@ export default function PaperStudio({
               </label>
               <label
                 className="block"
-                title="Keep vs lift. Hands pause when the page is fuller than this; undraw waits when it is emptier. Moods last long enough to fill, then to clear."
+                title="Keep vs lift. Draw and undraw run at the same time. How often marks lift follows how full the page is versus this slider."
               >
                 Undraw {fade.toFixed(2)}
                 <input

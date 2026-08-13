@@ -1,10 +1,10 @@
-# Bussaco Paper — study your hand, then draw from that knowledge.
+# Paper — study your hand, then draw from that knowledge.
 #
 #   make strokes     → inspect drawings, build pens (how you mark)
 #   make scribbles   → learn unlabeled vibe / scratches
 #   make symbols     → learn labeled folders (flower, …) + invent
-#   make paper       → all of the above
-#   make run         → API + tip for UI
+#   make paper       → all of the above + publish browser knowledge
+#   make run         → optional local API
 #
 # Then: npm run dev   → http://127.0.0.1:5173/
 
@@ -67,9 +67,9 @@ paper: pens scribbles symbols
 	@echo "  pens      → data/generate/pens.json"
 	@echo "  scribbles → data/generate/stroke_model/sketchrnn.pt"
 	@echo "  symbols   → data/generate/stroke_model/<label>.pt"
+	$(PYTHON) generate/publish_knowledge.py
 	@echo ""
-	@echo "Next:  make run"
-	@echo "Then:  npm run dev"
+	@echo "Next:  npm run dev"
 
 run model:
 	@echo "→ API http://127.0.0.1:8787  (UI: npm run dev → :5173)"

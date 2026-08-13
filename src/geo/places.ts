@@ -9,7 +9,7 @@ export type Place = {
 };
 
 export const PLACES: Place[] = [
-  { id: "bussaco", name: "Bussaco", lat: 40.376, lng: -8.435, radiusM: 900 },
+  { id: "here", name: "Here", lat: 40.376, lng: -8.435, radiusM: 900 },
 ];
 
 const EARTH_M = 6_371_000;
