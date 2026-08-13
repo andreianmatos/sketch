@@ -1,0 +1,14 @@
+node_modules
+.git
+.cursor
+drawings
+*.png
+*.jpg
+*.jpeg
+*.webp
+__pycache__
+*.pyc
+.env
+data/generate/outputs
+data/generate/upload_marks
+data/latent

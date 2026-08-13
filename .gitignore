@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+dist-ssr/
+*.local
+
+# env
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+*.sw?
+.idea/
+
+# python leftovers (kept data/)
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# original scans — too large for GitHub; keep them local
+drawings/
+
+# salt pipeline artifacts
+data/generate/upload_marks/
+data/generate/outputs/
+data/generate/uploads_library.json
+data/latent/
+checkpoints/
