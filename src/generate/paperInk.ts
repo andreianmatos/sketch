@@ -116,8 +116,9 @@ export type Timing = {
 export function stampRate(speed: number): number {
   const t = Math.max(0, Math.min(1, speed));
   if (t >= 0.96) return Infinity;
-  const perFrame = Math.max(1, Math.pow(t, 1.35) * 92);
-  return perFrame * 60;
+  const perFrame = Math.max(1, Math.pow(t, 1.65) * 36);
+  const delay = 20 + Math.pow(1 - t, 1.15) * 42;
+  return (perFrame / Math.max(delay, 16)) * 1000;
 }
 
 function stampsThisFrame(
@@ -127,15 +128,12 @@ function stampsThisFrame(
 ): { n: number; delay: number } {
   const t = Math.max(0, Math.min(1, speed));
   if (rewind) {
-    // Always retrace the path. Never dump the stroke in one frame.
-    const n = remaining > 420 ? 3 : remaining > 180 ? 2 : 1;
-    const delay = 24 + (1 - t) * 22;
-    return { n: Math.min(remaining, n), delay };
+    return { n: 1, delay: 56 };
   }
   if (t >= 0.96) return { n: remaining, delay: 0 };
-  if (t <= 0.02) return { n: 1, delay: 55 };
-  const n = Math.max(1, Math.round(Math.pow(t, 1.35) * 92));
-  const delay = t < 0.18 ? (0.18 - t) * 220 : 0;
+  if (t <= 0.02) return { n: 1, delay: 72 };
+  const n = Math.max(1, Math.round(Math.pow(t, 1.65) * 36));
+  const delay = 20 + Math.pow(1 - t, 1.15) * 42;
   return { n: Math.min(remaining, n), delay };
 }
 
@@ -168,8 +166,8 @@ function animateStamps(
         return;
       }
       let wait = delay;
-      if (drift > 0.08 && hash01(i * 0.37 + count) < drift * 0.18) {
-        wait += (40 + hash01(i * 1.1) * 220) * drift;
+      if (!timing.rewind && drift > 0.04 && hash01(i * 0.37 + count) < 0.08 + drift * 0.22) {
+        wait += (80 + hash01(i * 1.1) * 420) * (0.45 + drift);
       }
       if (wait > 8) window.setTimeout(() => requestAnimationFrame(tick), wait);
       else requestAnimationFrame(tick);
@@ -301,46 +299,49 @@ function clamp01(n: number, lo = 0, hi = 1): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
-/** Slider trade-off: 0 keeps a full page, 1 prefers mostly empty. */
-export function preferLoad(fade: number): number {
-  return 0.72 - clamp01(fade) * 0.64;
+/** Slider 0 = packed page, 1 = mostly empty paper. */
+export function preferLoad(blank: number): number {
+  return 0.86 - clamp01(blank) * 0.8;
 }
 
-/** How covered the page is right now (0 empty → 1 packed, ~5 drawings). */
+/** How covered the page is right now (0 empty → 1 packed, ~4.5 drawings). */
 export function pageLoad(
   archive: RecordedDrawing[],
   extra: RecordedStroke[] = [],
+  inflight = 0,
 ): number {
-  let drawings = archive.length;
+  let drawings = archive.length + inflight * 0.55;
   let marks = 0;
   for (const d of archive) {
     for (const s of d.strokes) marks += s.marks.length;
   }
   for (const s of extra) marks += s.marks.length;
-  if (extra.length) drawings += 1;
-  return Math.min(1.15, 0.74 * (drawings / 5.5) + 0.26 * (marks / 4200));
+  if (extra.length) drawings += 0.7;
+  return Math.min(1.2, 0.78 * (drawings / 4.5) + 0.22 * (marks / 3600));
 }
 
-export function makeInkBreath(fade: number): InkBreath {
-  const prefer = preferLoad(fade);
+export function makeInkBreath(blank: number): InkBreath {
+  const prefer = preferLoad(blank);
   return {
-    want: clamp01(prefer + (Math.random() - 0.5) * 0.1, 0.08, 0.78),
-    nextMood: Date.now() + 14000 + Math.random() * 18000,
+    want: clamp01(prefer + (Math.random() - 0.5) * 0.06, 0.04, 0.9),
+    nextMood: Date.now() + 9000 + Math.random() * 14000,
   };
 }
 
-/** Hold a fullness mood long enough to see: a few drawings, or almost blank. */
-export function tickBreath(breath: InkBreath, fade: number, now = Date.now()): number {
+/**
+ * Target fullness follows the Blank slider. A small wander around it
+ * is what makes the page sometimes fill a bit, sometimes clear a bit.
+ */
+export function tickBreath(breath: InkBreath, blank: number, now = Date.now()): number {
+  const prefer = preferLoad(blank);
+  if (Math.abs(breath.want - prefer) > 0.2) {
+    breath.want = prefer;
+    breath.nextMood = now + 6000;
+    return breath.want;
+  }
   if (now < breath.nextMood) return breath.want;
-  const prefer = preferLoad(fade);
-  const t = clamp01(fade);
-  const emptyP = 0.14 + t * 0.22;
-  const packedP = 0.08 + (1 - t) * 0.16;
-  const u = Math.random();
-  if (u < emptyP) breath.want = 0.04 + Math.random() * 0.1;
-  else if (u < emptyP + packedP) breath.want = 0.52 + Math.random() * 0.18;
-  else breath.want = clamp01(prefer + (Math.random() - 0.5) * 0.14, 0.06, 0.72);
-  breath.nextMood = now + 18000 + Math.random() * 32000;
+  breath.want = clamp01(prefer + (Math.random() - 0.5) * 0.14, 0.04, 0.9);
+  breath.nextMood = now + 18000 + Math.random() * 22000;
   return breath.want;
 }
 
@@ -350,33 +351,45 @@ function expWait(mean: number, lo: number, hi: number): number {
 }
 
 /**
- * Wait until the next rewind. Error vs want drives the rate — the slider
- * already chose `want`, so fade is not applied again here.
+ * Wait until the next rewind. Over the Blank threshold → lift soon.
+ * Under it → leave the page alone so drawing can catch up.
  */
-export function nextUndrawWait(fade: number, load: number, want: number): number {
-  if (fade <= 0.001) return 400;
+export function nextUndrawWait(blank: number, load: number, want: number): number {
+  if (blank <= 0.001) return 400;
   const err = load - want;
-  let mean = 1200;
-  if (err > 0.22) mean = 140;
-  else if (err > 0.08) mean = 320;
-  else if (err > -0.02) mean = 700;
-  else if (err > -0.14) mean = 2200;
-  else if (err > -0.28) mean = 7000;
-  else mean = 16000;
-  return expWait(mean, 90, 28000);
+  let mean = 4000;
+  if (err > 0.2) mean = 900;
+  else if (err > 0.08) mean = 1800;
+  else if (err > 0.02) mean = 3200;
+  else if (err > -0.06) mean = 7000;
+  else if (err > -0.16) mean = 12000;
+  else mean = 20000;
+  return expWait(mean, 400, 28000);
+}
+
+/** Pause drawing when the page is denser than the Blank slider. */
+export function nextDrawWait(load: number, want: number): number {
+  const err = load - want;
+  let mean = 700;
+  if (err > 0.22) mean = 5000;
+  else if (err > 0.1) mean = 2800;
+  else if (err > 0.03) mean = 1600;
+  else if (err > -0.05) mean = 900;
+  else mean = 480;
+  return expWait(mean, 220, 12000);
 }
 
 export function undrawBurst(load: number, want: number): number {
   const err = load - want;
-  if (err > 0.28 && Math.random() < 0.35) return 2;
+  if (err > 0.32 && Math.random() < 0.2) return 2;
   return 1;
 }
 
 export function undrawMinAge(load: number, want: number): number {
   const err = load - want;
-  if (err > 0.16) return 400;
-  if (err > 0.02) return 900;
-  return 1800;
+  if (err > 0.12) return 1800;
+  if (err > 0.02) return 3200;
+  return 5200;
 }
 
 function pickAgedDrawing(archive: RecordedDrawing[], minAgeMs: number): number {
@@ -394,16 +407,16 @@ async function fadeLayerRest(
   timing: Timing,
 ): Promise<void> {
   const { width: w, height: h } = ctx.canvas;
-  for (let k = 0; k < 10; k++) {
+  for (let k = 0; k < 28; k++) {
     if (timing.stop?.()) return;
     ctx.save();
     ctx.globalCompositeOperation = "destination-out";
-    ctx.globalAlpha = 0.16 + k * 0.04;
+    ctx.globalAlpha = 0.045;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
     timing.afterStamp?.();
-    await sleep(36);
+    await sleep(70);
   }
 }
 
@@ -434,13 +447,20 @@ export async function undrawDrawing(
   if (idx < 0) return false;
   const drawing = archive.splice(idx, 1)[0];
   onLift(drawing);
+  let aborted = false;
   for (let s = drawing.strokes.length - 1; s >= 0; s--) {
-    if (timing.stop?.()) break;
+    if (timing.stop?.()) {
+      aborted = true;
+      break;
+    }
     await undrawStroke(drawing.strokes[s], timing);
-    if (s > 0 && !timing.stop?.()) await sleep(70 + Math.random() * 110);
+    if (s > 0 && !timing.stop?.()) await sleep(160 + Math.random() * 280);
+  }
+  if (aborted) {
+    archive.push(drawing);
   }
   onDone();
-  return true;
+  return !aborted;
 }
 
 type PenLook = {
@@ -527,7 +547,7 @@ function punchDab(
   y: number,
   size: number,
 ) {
-  const r = Math.max(3.6, size * 0.62);
+  const r = Math.max(4.8, size * 0.92);
   ctx.save();
   ctx.globalCompositeOperation = "destination-out";
   const g = ctx.createRadialGradient(x, y, 0, x, y, r * 1.15);
@@ -774,7 +794,7 @@ function layoutFill(unit: Unit): {
       : style === "blob"
         ? 28 + Math.floor(coverAmt * 40)
         : style === "full"
-          ? 16 + Math.floor(coverAmt * 24)
+          ? 52 + Math.floor(coverAmt * 90)
           : 36 + Math.floor(coverAmt * 70);
   const reach =
     style === "blob" ? 0.28 + coverAmt * 0.18 : style === "mist" ? 0.62 : 0.52;
@@ -841,7 +861,7 @@ function drawFill(
 ): Promise<InkMark[]> {
   const laid = layoutFill(unit);
   if (!laid) return Promise.resolve([]);
-  const { ring, dabs, look, style, cr, cg, cb } = laid;
+  const { dabs, look, style, cr, cg, cb } = laid;
   const tipKind = style === "full" ? "wash" : "airbrush";
   const inked = [0, 1, 2].map((v) =>
     colorizeTip(
@@ -852,18 +872,6 @@ function drawFill(
     ),
   );
 
-  if (style === "full") {
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.beginPath();
-    ctx.moveTo(ring[0][0], ring[0][1]);
-    for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i][0], ring[i][1]);
-    ctx.closePath();
-    ctx.globalAlpha = Math.min(0.62, look.opacity * 0.85);
-    ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
-    ctx.fill();
-    ctx.restore();
-  }
   if (!dabs.length) return Promise.resolve([]);
 
   const marks: InkMark[] = [];

@@ -95,17 +95,29 @@ function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+function sat(c: number[]): number {
+  return Math.max(c[0] ?? 0, c[1] ?? 0, c[2] ?? 0) - Math.min(c[0] ?? 0, c[1] ?? 0, c[2] ?? 0);
+}
+
 function nearestPen(color: number[], widthRel: number, pens: Pen[]): Pen | null {
   if (!pens.length) return null;
   const wr = Math.log(Math.max(widthRel, 1e-4));
-  const L = lum(color) / 255;
+  const cs = sat(color);
   let best: Pen | null = null;
   let bestD = 1e9;
   for (const p of pens) {
     const pc = p.color || [28, 26, 24];
-    const plum = lum(pc) / 255;
+    const dr = ((color[0] ?? 28) - (pc[0] ?? 28)) / 255;
+    const dg = ((color[1] ?? 26) - (pc[1] ?? 26)) / 255;
+    const db = ((color[2] ?? 24) - (pc[2] ?? 24)) / 255;
     const pwr = Math.log(Math.max(Number(p.width_rel) || 0.05, 1e-4));
-    const d = (L - plum) ** 2 * 2.4 + (wr - pwr) ** 2 * 1.5;
+    const ps = sat(pc);
+    const d =
+      dr * dr * 1.1 +
+      dg * dg +
+      db * db +
+      (wr - pwr) ** 2 * 0.9 +
+      ((cs - ps) / 180) ** 2 * 1.6;
     if (d < bestD) {
       bestD = d;
       best = p;
@@ -122,29 +134,20 @@ function inkColor(color: number[], rng: Rng, kind: string | undefined): [number,
   const r = color[0] | 0;
   const g = color[1] | 0;
   const b = color[2] | 0;
-  const sat = Math.max(r, g, b) - Math.min(r, g, b);
-  const L = lum([r, g, b]);
+  const chroma = sat([r, g, b]);
   const k = (kind || "").toLowerCase();
-  if (k === "wash" || k === "graphite") {
+  const jr = rng.int(-7, 7);
+  const jg = rng.int(-7, 7);
+  const jb = rng.int(-7, 7);
+  if ((k === "wash" || k === "graphite") && chroma < 22) {
     const warm = rng.int(-4, 6);
     return [
-      clip(r + warm, 8, 210) | 0,
-      clip(g + warm - 2, 8, 205) | 0,
-      clip(b + warm - 4, 8, 200) | 0,
+      clip(r + warm + jr, 8, 220) | 0,
+      clip(g + warm - 2 + jg, 8, 215) | 0,
+      clip(b + warm - 4 + jb, 8, 210) | 0,
     ];
   }
-  if (k === "accent" || (sat > 35 && rng.next() < 0.28)) {
-    return [
-      clip(r * 0.82 + 12, 0, 255) | 0,
-      clip(g * 0.72 + 10, 0, 255) | 0,
-      clip(b * 0.75 + 12, 0, 255) | 0,
-    ];
-  }
-  if (sat > 35 || (L > 155 && k !== "wash" && k !== "graphite")) {
-    const v = rng.int(12, 48);
-    return [v, Math.max(0, v - 2), Math.max(0, v - 4)];
-  }
-  return [r, g, b];
+  return [clip(r + jr, 0, 255) | 0, clip(g + jg, 0, 255) | 0, clip(b + jb, 0, 255) | 0];
 }
 
 function applyPen(
@@ -429,7 +432,7 @@ function assignFills(
     const outline = (u.color || [28, 26, 24]).slice(0, 3);
     const raw = u.rawColor || outline;
     const fc =
-      c.srcFill && Math.max(...raw) - Math.min(...raw) > 22
+      c.srcFill && sat(raw) > 22
         ? raw.slice(0, 3)
         : outline.map((v) => clip(v * 0.7 + 40, 0, 255) | 0);
     const style = rng.choice([...styles], weights);
@@ -585,7 +588,6 @@ function placeIconStrokes(
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   const jitter = 0.012 + novelty * 0.05;
-  const charcoal = pens.find((p) => String(p.name || "").includes("charcoal")) || null;
   const placed: Placed[] = [];
   for (const { src, pts } of kept) {
     let world = rot2(
@@ -596,8 +598,7 @@ function placeIconStrokes(
     world = handJitter(world, rng, jitter);
     world = chaikin(world, 1, Boolean(src.closed));
     if (world.length < 2) continue;
-    let pen = pickPen(rng, pens);
-    if (pen && String(pen.name || "").includes("wash") && charcoal) pen = charcoal;
+    const pen = pickPen(rng, pens);
     const applied = applyPen(world.length, pen, rng, novelty);
     const sizeBoost = clip(size / Math.max(Math.min(width, height), 1), 0.18, 1.25);
     const thick = 0.92 + sizeBoost * 0.42;
@@ -652,15 +653,14 @@ async function libraryPassage(opts: {
   const weights = units.map((u) => {
     const col = u.color || [40, 40, 38];
     const L = lum(col);
-    const sat = Math.max(...col) - Math.min(...col);
+    const chroma = sat(col);
     return Math.max(
       0.05,
       0.3 +
         (Number(u.length) || 0.1) +
         (Number(u.page_len) || 0) * 0.4 +
-        (L < 70 ? 1.5 : 0) +
-        (sat < 25 ? 1 : 0) -
-        (sat > 60 ? 0.7 : 0) +
+        (L < 70 ? 1.2 : 0) +
+        (chroma < 25 ? 0.35 : 0) +
         (u._kind === "stroke" ? 0.6 : 0.2),
     );
   });

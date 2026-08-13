@@ -1,8 +1,6 @@
-/** Default map origin (WGS84). */
-export const MAP_ORIGIN = {
-  lat: 40.376,
-  lng: -8.435,
-} as const;
+import { MAP_ORIGIN } from "./places";
+
+export { MAP_ORIGIN };
 
 /** Occupancy grid cell size in meters. */
 export const CELL_SIZE_M = 5;

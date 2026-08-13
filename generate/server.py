@@ -124,6 +124,13 @@ def stroke(
 
 app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
+# Browser compose reads /knowledge/*.json (copied into dist on build).
+_knowledge = DIST_DIR / "knowledge"
+if not _knowledge.is_dir():
+    _knowledge = ROOT / "public" / "knowledge"
+if _knowledge.is_dir():
+    app.mount("/knowledge", StaticFiles(directory=str(_knowledge)), name="knowledge")
+
 # Serve built UI from the same Space (npm run build → dist/)
 if DIST_DIR.is_dir() and (DIST_DIR / "index.html").exists():
     assets = DIST_DIR / "assets"

@@ -1,4 +1,15 @@
-/** Places where the walk page is allowed to draw. Edit this list. */
+/**
+ * Map of spaces. Each entry is a pin with a small radius — not a street
+ * unless you say so. Walk inks only inside a place with `draw: true`.
+ *
+ * Later, set `ink` on a place to bind it to a specific drawing set
+ * (mode, icon, …). Leave `ink` off to use the ordinary paper.
+ */
+export type PlaceInk = {
+  mode?: "vibe" | "icon" | "mix";
+  icon?: string;
+};
+
 export type Place = {
   id: string;
   name: string;
@@ -6,11 +17,40 @@ export type Place = {
   lng: number;
   /** Draw only when GPS is within this many meters of the pin. */
   radiusM: number;
+  /** Walk page shows drawings while you are here. */
+  draw?: boolean;
+  /** Optional place-specific ink. Unset = same paper as the studio. */
+  ink?: PlaceInk;
 };
 
+/** Default for a mapped space: a small circle, not a road. */
+export const PLACE_RADIUS_M = 45;
+
 export const PLACES: Place[] = [
-  { id: "here", name: "Here", lat: 40.376, lng: -8.435, radiusM: 900 },
+  {
+    id: "vila-cha-de-sa",
+    name: "Vila Chã de Sá",
+    lat: 40.611369,
+    lng: -7.946984,
+    radiusM: PLACE_RADIUS_M,
+    draw: true,
+  },
+  {
+    id: "laranjeiras",
+    name: "Laranjeiras",
+    lat: 38.74901,
+    lng: -9.18072,
+    // One neighborhood: Estrada da Luz, Laranjeiras, Alto dos Moinhos, Estrada de Benfica.
+    radiusM: 900,
+    draw: true,
+  },
 ];
+
+/** Grid / mock origin — the first mapped space. */
+export const MAP_ORIGIN = {
+  lat: 40.611369,
+  lng: -7.946984,
+} as const;
 
 const EARTH_M = 6_371_000;
 

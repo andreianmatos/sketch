@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import PaperStudio from "./generate/PaperStudio";
-import { PAPER } from "./generate/paperInk";
-import { PLACES, placeAt, type Place } from "./geo/places";
+import { placeAt, type Place } from "./geo/places";
 import { startWatch, type GeoFix, type GeoState } from "./geo/watch";
 
 const INITIAL: GeoState = {
@@ -14,88 +13,41 @@ function fixFromState(state: GeoState): GeoFix | null {
   return null;
 }
 
+function formatCoord(lat: number, lng: number): string {
+  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
 export default function WalkApp() {
   const [geo, setGeo] = useState<GeoState>(INITIAL);
-  const [wantWatch, setWantWatch] = useState(true);
-  const [watchGen, setWatchGen] = useState(0);
 
-  useEffect(() => {
-    if (!wantWatch) return;
-    return startWatch(setGeo);
-  }, [wantWatch, watchGen]);
+  useEffect(() => startWatch(setGeo), []);
 
   const fix = fixFromState(geo);
   const here: Place | null = useMemo(
     () => (fix ? placeAt(fix.lat, fix.lng) : null),
     [fix],
   );
-  const inPlace = Boolean(here);
-
-  const pretendHere = () => {
-    setWantWatch(false);
-    const place = PLACES[0];
-    if (!place) return;
-    setGeo({
-      status: "mock",
-      fix: { lat: place.lat, lng: place.lng, accuracy: 8 },
-      message: `Pretending ${place.name}.`,
-    });
-  };
-
-  const useRealGps = () => {
-    setWantWatch(true);
-    setWatchGen((n) => n + 1);
-  };
-
-  const showShare = geo.status !== "tracking" && geo.status !== "mock";
-
-  const line = inPlace
-    ? here?.name ?? ""
-    : geo.status === "requesting"
-      ? "Requesting location…"
-      : geo.status === "tracking" || geo.status === "mock"
-        ? "Not here"
-        : geo.message;
 
   return (
-    <PaperStudio drawing={inPlace} blankWhenIdle showPanel={false}>
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <p className="text-xs text-[#6a6a66] sm:text-[10px]">{line}</p>
-      </div>
-
-      <div
-        className="absolute inset-x-0 bottom-0 z-20 px-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] pt-8 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-        style={{
-          background: `linear-gradient(to top, ${PAPER} 55%, transparent)`,
-        }}
-      >
-        <div className="pointer-events-auto flex flex-wrap gap-2">
-          {showShare && (
-            <button
-              type="button"
-              className="tap rounded-sm border border-[#2a2a28] bg-[#2a2a28] text-white"
-              onClick={useRealGps}
-            >
-              Share location
-            </button>
-          )}
-          {geo.status === "mock" && (
-            <button
-              type="button"
-              className="tap rounded-sm border border-[#2a2a28] bg-[#2a2a28] text-white"
-              onClick={useRealGps}
-            >
-              Use GPS
-            </button>
-          )}
-          <button
-            type="button"
-            className="tap rounded-sm border border-[#d0d0ca] bg-white/80"
-            onClick={pretendHere}
-          >
-            Pretend I&apos;m here
-          </button>
-        </div>
+    <PaperStudio
+      drawing={Boolean(here?.draw)}
+      ink={here?.ink}
+      blankWhenIdle
+      showPanel={false}
+    >
+      <div className="pointer-events-none absolute bottom-0 left-0 z-20 px-[max(1rem,env(safe-area-inset-left))] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {fix ? (
+          <>
+            <p className="font-mono text-[11px] tabular-nums text-[#6a6a66] sm:text-[10px]">
+              {formatCoord(fix.lat, fix.lng)}
+            </p>
+            {here && (
+              <p className="text-[11px] text-[#6a6a66] sm:text-[10px]">{here.name}</p>
+            )}
+          </>
+        ) : (
+          <p className="text-[11px] text-[#6a6a66] sm:text-[10px]">{geo.message}</p>
+        )}
       </div>
     </PaperStudio>
   );
